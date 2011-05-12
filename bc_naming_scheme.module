@@ -1,0 +1,256 @@
+<?php
+
+function bc_naming_scheme_menu() {
+  $item['node/%node/edit/settings'] = array(
+    'title' => t('Settings'),
+    'access callback' => 'is_node_type',
+    'access arguments' => array('project',1),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('bc_settings_form',1),
+    'type' => MENU_LOCAL_TASK,
+  );
+  return $item;
+}
+
+/**
+ * access callback
+ */
+function is_node_type($type, $node) {
+  return $node->type == $type;
+}
+
+/**
+ * settings functions
+ */
+function bc_settings_form(&$form_state, $group_node) {
+
+  $form['#group_nid'] = $group_node->nid;
+
+  $form['naming_scheme'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Naming Scheme'),
+    '#description' => t('Control the naming scheme of the models and sheets.'),
+    '#collapsible' => TRUE,
+  );
+
+  $form['naming_scheme']['model_base'] = array(
+    '#required' => TRUE,
+    '#type' => 'textfield',
+    '#title' => t('Model Base'),
+    '#description' => bc_naming_scheme_token_help('Model Base'),
+    '#default_value' => bc_get_naming_scheme($group_node->nid, 'model_base'),
+  );
+
+  $form['naming_scheme']['model_control'] = array(
+    '#required' => TRUE,
+    '#type' => 'textfield',
+    '#title' => t('Model Control'),
+    '#description' => bc_naming_scheme_token_help('Model Control'),
+    '#default_value' => bc_get_naming_scheme($group_node->nid, 'model_control'),
+  );
+
+  $form['naming_scheme']['model_federated'] = array(
+    '#required' => TRUE,
+    '#type' => 'textfield',
+    '#title' => t('Model Federated'),
+    '#description' => bc_naming_scheme_token_help('Model Federated'),
+    '#default_value' => bc_get_naming_scheme($group_node->nid, 'model_federated'),
+  );
+
+  $form['naming_scheme']['sheet'] = array(
+    '#required' => TRUE,
+    '#type' => 'textfield',
+    '#title' => t('Sheet'),
+    '#description' => bc_naming_scheme_token_help('Sheet'),
+    '#default_value' => bc_get_naming_scheme($group_node->nid, 'sheet'),
+  );
+
+  $form['naming_scheme']['sketch'] = array(
+    '#required' => TRUE,
+    '#type' => 'textfield',
+    '#title' => t('Sketch'),
+    '#description' => bc_naming_scheme_token_help('Sketch'),
+    '#default_value' => bc_get_naming_scheme($group_node->nid, 'sketch'),
+  );
+
+  $form['save'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save settings'),
+  );
+
+  return $form;
+}
+
+function bc_settings_form_validate($form, &$form_state) {
+  //TODO: do some validation.
+}
+
+function bc_settings_form_submit($form, &$form_state) {
+
+  $types = array('model_base', 'model_control', 'model_federated', 'sheet', 'sketch');
+  foreach ($types as $type) {
+    $record = array('group_nid' => $form['#group_nid'], 'type' => $type, 'value' => $form_state['values'][$type]);
+    //try update first if fails do new creation
+    drupal_write_record('bc_naming_scheme', $record, array('group_nid', 'type'));
+    if (db_affected_rows() == 0) {
+      drupal_write_record('bc_naming_scheme', $record);
+    }
+  }
+  //update names for whole project
+  bc_naming_scheme_update_all($form['#group_nid']);
+}
+
+function bc_naming_scheme_update_all($group_nid) {
+  $nids = array();
+  $result = db_query(sprintf('select nid from {og_ancestry} where group_nid="%s"',$group_nid));
+  while ($row = db_fetch_object($result)) {
+    $nids[] = $row->nid;
+  }
+  bc_naming_scheme_update($nids);
+}
+
+/**
+ * equivalents to auto_nodetitle
+ */
+function bc_naming_scheme_nodeapi(&$node, $op) {
+  if ($op == 'presave' && empty($node->bc_naming_scheme_applied)) {
+    bc_naming_scheme_set_title($node);
+  }
+}
+
+/**
+ * Makes sure the node preview is shown right.
+ * It gets the node object, modifies the title, and updates the node in the form_state.
+ */
+function bc_naming_scheme_form_submit($form, &$form_state) {
+  // Only do something, if the user clicked the preview button.
+  if (isset($form_state['clicked_button']['#submit']) && in_array('node_form_build_preview', $form_state['clicked_button']['#submit'])) {
+    bc_naming_scheme_set_title($node);
+    $form_state['values'] = (array)$node;
+  }
+}
+
+function bc_naming_scheme_set_title(&$node) {
+  foreach($node->og_groups as $group_nid) {
+    $scheme = bc_get_naming_scheme($group_nid, $node->type);
+    $node->group_nid = $group_nid;
+  }
+  if (in_array($node->type,array('model_base', 'model_control', 'model_federated', 'sheet', 'sketch'))) {
+    $node->title = token_replace($scheme, 'bc_naming_scheme', $node);
+  }
+  //watchdog('naming', print_r($node,1));
+}
+
+/**
+ * node operations hooks
+ */
+function bc_naming_scheme_node_operations() {
+  $operations = array(
+    'naming_scheme_update' => array(
+      'label' => t('Update name from naming scheme'),
+      'callback' => 'bc_naming_scheme_update',
+    ),
+  );
+  return $operations;
+}
+
+function bc_naming_scheme_update($nids) {
+  foreach ($nids as $nid) {
+  $node = node_load($nid);
+    $orig_title = $node->title;
+    bc_naming_scheme_set_title($node);
+    if ($orig_title != $node->title) {
+      node_save($node);
+    }
+  }
+}
+
+/**
+ * Implement token hooks
+ */
+function bc_naming_scheme_token_values($type, $node = NULL) {
+  if ($type = 'bc_naming_scheme') {
+    $project_node    = node_load($node->group_nid);
+    $element_node    = node_load($node->field_element_reference[0]['nid']);
+    $zone_node       = node_load($node->field_zone_reference[0]['nid']);
+    $discipline_node = node_load($node->field_discipline_reference[0]['nid']);
+    $series_node     = node_load($node->field_series_reference[0]['nid']);
+
+    $tokens['project']    = $project_node->field_project_code[0]['value'];
+    $tokens['element']    = $element_node->field_element_code[0]['value'];
+    $tokens['zone']       = $zone_node->title;
+    $tokens['discipline'] = $discipline_node->field_discipline_code[0]['value'];
+    $tokens['series']     = $series_node->field_series_code[0]['value'];
+    $tokens['number']     = sprintf($node->type == 'sketch'? '%04d':'%03d',$node->field_number[0]['value']);
+    $tokens['level']      = sprintf('%03d', $node->field_level[0]['value']);
+
+    return $tokens;
+  }
+}
+
+function bc_naming_scheme_token_list($type = 'all') {
+
+  if ($type == 'node') {
+    $type = 'Naming Scheme';
+    $tokens[$type]['element'] = t('The element.');
+    $tokens[$type]['discipline'] = t('The discipline.');
+    $tokens[$type]['number'] = t('The sheet number.');
+    $tokens[$type]['project'] = t('The project reference.');
+    $tokens[$type]['number'] = t('Number');
+    $tokens[$type]['level'] = t('The level.');
+    $tokens[$type]['zone'] = t('The zone.');
+  }
+  if ($type == 'Model Base') {
+    $tokens[$type]['project'] = t('The project reference.');
+    $tokens[$type]['element'] = t('The element.');
+    $tokens[$type]['level'] = t('The level.');
+    $tokens[$type]['zone'] = t('The zone.');
+  }
+  if ($type == 'Sheet') {
+    $tokens[$type]['discipline'] = t('The discipline.');
+    $tokens[$type]['level'] = t('The level.');
+    $tokens[$type]['zone'] = t('The zone.');
+  }
+  if ($type == 'Sketch') {
+    $tokens[$type]['project'] = t('The project reference.');
+    $tokens[$type]['discipline'] = t('The discipline.');
+    $tokens[$type]['number'] = t('Number');
+  }
+  if ($type == 'Sheet' || $type == 'Sketch') {
+    $tokens[$type]['series'] = t('Series');
+  }
+  if ($type == 'Model Control' || $type == 'Model Federated' || $type == 'Sheet') {
+    $tokens[$type]['project'] = t('The project reference.');
+    $tokens[$type]['number'] = t('Number');
+  }
+  return $tokens;
+}
+
+/**
+ * Helpers
+ */
+function bc_naming_scheme_token_help($type) {
+
+  $token_help = array(
+    '#title' => t('Substitution Tokens'),
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#description' => t('The following tokens are available to help with this string generation. e.g. [project]-[level].'),
+    '#value' => theme('token_help', $type),
+  );
+  return theme('fieldset', $token_help);
+}
+
+function bc_get_naming_scheme($group_nid, $type) {
+  $sql = "select value from {bc_naming_scheme} where group_nid=%d and type='%s'";
+  $result = db_query(sprintf($sql, $group_nid, $type));
+
+  $scheme =  db_result($result);
+
+  if (!$scheme) {
+    $scheme = variable_get('ant_pattern_'. $type, '');
+  }
+
+  return $scheme;
+}
