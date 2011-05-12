@@ -131,12 +131,14 @@ function bc_naming_scheme_form_submit($form, &$form_state) {
 }
 
 function bc_naming_scheme_set_title(&$node) {
-  foreach($node->og_groups as $group_nid) {
-    $scheme = bc_get_naming_scheme($group_nid, $node->type);
-    $node->group_nid = $group_nid;
-  }
-  if (in_array($node->type,array('model_base', 'model_control', 'model_federated', 'sheet', 'sketch'))) {
-    $node->title = token_replace($scheme, 'bc_naming_scheme', $node);
+  if (is_array($node->og_groups)) {
+    foreach($node->og_groups as $group_nid) {
+      $scheme = bc_get_naming_scheme($group_nid, $node->type);
+      $node->group_nid = $group_nid;
+    }
+    if (in_array($node->type,array('model_base', 'model_control', 'model_federated', 'sheet', 'sketch'))) {
+      $node->title = token_replace($scheme, 'bc_naming_scheme', $node);
+    }
   }
   //watchdog('naming', print_r($node,1));
 }
