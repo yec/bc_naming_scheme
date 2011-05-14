@@ -30,3 +30,4 @@ function bc_naming_scheme_install() {
   db_query("UPDATE {system} SET weight = 6 WHERE name = 'bc_naming_scheme'");
   drupal_install_schema('bc_naming_scheme');
 }
+

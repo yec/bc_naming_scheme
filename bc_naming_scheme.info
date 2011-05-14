@@ -1,7 +1,6 @@
-; $Id.
 name = BIM Control Naming Scheme
 description = Control the naming scheme of the models and sheets.
 core = 6.x
 package = Bimcontrol
-
 dependencies[] = og
+

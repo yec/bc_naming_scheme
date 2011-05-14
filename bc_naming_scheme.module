@@ -174,13 +174,12 @@ function bc_naming_scheme_token_values($type, $node = NULL) {
   if ($type = 'bc_naming_scheme') {
     $project_node    = node_load($node->group_nid);
     $element_node    = node_load($node->field_element_reference[0]['nid']);
-    $zone_node       = node_load($node->field_zone_reference[0]['nid']);
-    $discipline_node = node_load($node->field_discipline_reference[0]['nid']);
     $series_node     = node_load($node->field_series_reference[0]['nid']);
+    $discipline_node = node_load($series_node->field_discipline_reference[0]['nid']);
 
     $tokens['project']    = $project_node->field_project_code[0]['value'];
     $tokens['element']    = $element_node->field_element_code[0]['value'];
-    $tokens['zone']       = $zone_node->title;
+    $tokens['zone']       = strtoupper($node->field_zone[0]['value']);
     $tokens['discipline'] = $discipline_node->field_discipline_code[0]['value'];
     $tokens['series']     = $series_node->field_series_code[0]['value'];
     $tokens['number']     = sprintf($node->type == 'sketch'? '%04d':'%03d',$node->field_number[0]['value']);
@@ -256,3 +255,4 @@ function bc_get_naming_scheme($group_nid, $type) {
 
   return $scheme;
 }
+
